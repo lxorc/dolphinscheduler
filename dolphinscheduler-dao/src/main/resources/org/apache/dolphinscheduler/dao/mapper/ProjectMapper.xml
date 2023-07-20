@@ -84,18 +84,29 @@
         select
         <include refid="baseSqlV2">
             <property name="alias" value="p"/>
-        </include> ,
+        </include>
+        ,
         u.user_name as user_name,
-        count(distinct def.id) AS def_count,
-        count(distinct inst.id) as inst_running_count
+        (select count(*) from t_ds_process_definition AS def where def.project_code = p.code) AS def_count,
+        coalesce(inst_running.inst_running_count, 0) as inst_running_count
         from t_ds_project p
         left join t_ds_user u on u.id=p.user_id
-        left join t_ds_process_definition def
-        on def.project_code = p.code
-        left join t_ds_process_instance inst
-        on inst.process_definition_code = def.code
-        and inst.process_definition_version = def.version
-        and inst.state = 1
+        left join
+        (
+            select  count(*)         AS inst_running_count
+            ,def.project_code AS project_code
+            from
+            (
+                select  process_definition_code
+                ,process_definition_version
+                from t_ds_process_instance
+                where state = 1
+            ) inst
+            left join t_ds_process_definition_log def
+            ON def.code = inst.process_definition_code AND def.version = inst.process_definition_version
+            GROUP BY  def.project_code
+        ) inst_running
+        ON inst_running.project_code = p.code
         where 1=1
         <if test="projectsIds != null and projectsIds.size() > 0">
             and p.id  in
